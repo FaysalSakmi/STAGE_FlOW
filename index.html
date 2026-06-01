@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>StageFlow — Plateforme de Suivi des Stages</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header>
+    <div class="header-inner">
+      <div class="logo">
+        <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+        </svg>
+        <div>
+          <span class="logo-l">Stage</span><span class="logo-ear">Flow</span>
+        </div>
+        <span class="logo-tag">Suivi des Stages</span>
+      </div>
+      <nav id="mainNav">
+        <a href="#dashboard" class="nav-link active" data-page="dashboard" onclick="navigateTo('dashboard', event)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+          Dashboard
+        </a>
+        <a href="#candidats" class="nav-link" data-page="candidats" onclick="navigateTo('candidats', event)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+          Candidats
+        </a>
+        <a href="#statistiques" class="nav-link" data-page="statistiques" onclick="navigateTo('statistiques', event)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          Statistiques
+        </a>
+      </nav>
+      <div class="header-right">
+        <button class="btn-refresh" id="btnRefresh" onclick="refreshData()" title="Actualiser depuis Airtable">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1 2.19-6.94"/></svg>
+          Actualiser
+        </button>
+        <span class="badge-live">● LIVE</span>
+        <span class="user-chip">Admin</span>
+      </div>
+    </div>
+  </header>
+
+  <main id="mainContent">
+
+    <!-- ============================== -->
+    <!-- PAGE: DASHBOARD                -->
+    <!-- ============================== -->
+    <section id="page_dashboard" class="page">
+
+      <!-- Hero -->
+      <section class="hero">
+        <div class="hero-bg"></div>
+        <div class="hero-content">
+          <h1>Dashboard<br><em>Général</em></h1>
+          <p class="hero-sub">Vue d'ensemble du programme de stages et suivi en temps réel.</p>
+        </div>
+      </section>
+
+      <!-- KPI Cards -->
+      <section class="kpi-section">
+        <div class="kpi-card">
+          <div class="kpi-icon total">👥</div>
+          <div class="kpi-info">
+            <div class="kpi-value" id="kpiTotal">—</div>
+            <div class="kpi-label">Candidats Total</div>
+          </div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon active">🟢</div>
+          <div class="kpi-info">
+            <div class="kpi-value" id="kpiActive">—</div>
+            <div class="kpi-label">Stages en Cours</div>
+          </div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon upcoming">⏳</div>
+          <div class="kpi-info">
+            <div class="kpi-value" id="kpiUpcoming">—</div>
+            <div class="kpi-label">À Venir</div>
+          </div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon ended">✅</div>
+          <div class="kpi-info">
+            <div class="kpi-value" id="kpiEnded">—</div>
+            <div class="kpi-label">Terminés</div>
+          </div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon fil">📚</div>
+          <div class="kpi-info">
+            <div class="kpi-value" id="kpiFilieres">—</div>
+            <div class="kpi-label">Filières</div>
+          </div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon eta">🏫</div>
+          <div class="kpi-info">
+            <div class="kpi-value" id="kpiEtab">—</div>
+            <div class="kpi-label">Établissements</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Charts Row -->
+      <section class="charts-section">
+        <div class="chart-card">
+          <h3>Distribution par Statut</h3>
+          <div class="chart-wrapper pie">
+            <canvas id="chartStatus"></canvas>
+          </div>
+        </div>
+        <div class="chart-card">
+          <h3>Stages par Filière</h3>
+          <div class="chart-wrapper bar">
+            <canvas id="chartFiliere"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <!-- Timeline Chart -->
+      <section class="charts-section">
+        <div class="chart-card wide">
+          <h3>Évolution Mensuelle des Stages</h3>
+          <div class="chart-wrapper line">
+            <canvas id="chartTimeline"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <!-- Derniers Stages -->
+      <section class="recent-section">
+        <div class="recent-header">
+          <h2>Stages Récents</h2>
+          <a href="#candidats" onclick="navigateTo('candidats', event)">Voir tous →</a>
+        </div>
+        <div class="recent-list" id="recentList"></div>
+      </section>
+    </section>
+
+    <!-- ============================== -->
+    <!-- PAGE: CANDIDATS               -->
+    <!-- ============================== -->
+    <section id="page_candidats" class="page hidden">
+
+      <!-- Hero -->
+      <section class="hero">
+        <div class="hero-bg"></div>
+        <div class="hero-content">
+          <h1>Candidats &<br><em>Stagiaires</em></h1>
+          <p class="hero-sub">Liste complète, recherche avancée et gestion des stagiaires.</p>
+
+          <div class="search-bar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="globalSearch" placeholder="Rechercher par nom, filière, établissement, email…" />
+            <button onclick="clearSearch()">✕</button>
+          </div>
+
+          <div class="filter-row">
+            <select id="filterFiliere">
+              <option value="">Toutes les filières</option>
+            </select>
+            <select id="filterEtablissement">
+              <option value="">Tous les établissements</option>
+            </select>
+            <select id="filterStatus">
+              <option value="">Tous les statuts</option>
+              <option value="active">Stage en cours</option>
+              <option value="upcoming">À venir</option>
+              <option value="ended">Terminé</option>
+            </select>
+            <button class="btn-reset" onclick="resetFilters()">Réinitialiser</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Filter Status Band -->
+      <section class="filter-bar">
+        <button class="filter-chip active" data-filter="all" onclick="setStatusFilter('all')">Tous</button>
+        <button class="filter-chip" data-filter="active" onclick="setStatusFilter('active')">En Cours</button>
+        <button class="filter-chip" data-filter="upcoming" onclick="setStatusFilter('upcoming')">À Venir</button>
+        <button class="filter-chip" data-filter="ended" onclick="setStatusFilter('ended')">Terminés</button>
+      </section>
+
+      <!-- Table Stats -->
+      <section class="stats-band">
+        <div class="stat-card">
+          <span class="stat-num" id="statTotal">—</span>
+          <span class="stat-label">Candidats</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-num" id="statActive">—</span>
+          <span class="stat-label">En cours</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-num" id="statFiliere">—</span>
+          <span class="stat-label">Filières</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-num" id="statEtab">—</span>
+          <span class="stat-label">Établissements</span>
+        </div>
+      </section>
+
+      <!-- TABLE SECTION -->
+      <section class="table-section" id="candidats">
+        <div class="table-header">
+          <h2>Liste des Candidats <span id="countLabel"></span></h2>
+          <div class="table-actions">
+            <button class="btn-export" onclick="exportCSV()">⬇ Exporter CSV</button>
+            <button class="btn-view" id="toggleView" onclick="toggleView()">⊞ Vue Cartes</button>
+          </div>
+        </div>
+
+        <!-- TABLE VIEW -->
+        <div id="tableView">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th onclick="sortTable('nom')" class="sortable"># Candidat <span class="sort-icon">⇅</span></th>
+                  <th onclick="sortTable('filiere')" class="sortable">Filière <span class="sort-icon">⇅</span></th>
+                  <th onclick="sortTable('etablissement')" class="sortable">Établissement <span class="sort-icon">⇅</span></th>
+                  <th>Téléphone</th>
+                  <th>Email</th>
+                  <th onclick="sortTable('debut')" class="sortable">Début <span class="sort-icon">⇅</span></th>
+                  <th onclick="sortTable('fin')" class="sortable">Fin <span class="sort-icon">⇅</span></th>
+                  <th>Statut</th>
+                </tr>
+              </thead>
+              <tbody id="tableBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- CARD VIEW -->
+        <div id="cardView" class="hidden">
+          <div class="cards-grid" id="cardsGrid"></div>
+        </div>
+
+        <div class="no-results hidden" id="noResults">
+          <div class="no-results-icon">🔍</div>
+          <p>Aucun candidat trouvé pour cette recherche.</p>
+        </div>
+      </section>
+    </section>
+
+    <!-- ============================== -->
+    <!-- PAGE: STATISTIQUES            -->
+    <!-- ============================== -->
+    <section id="page_statistiques" class="page hidden">
+
+      <!-- Hero -->
+      <section class="hero">
+        <div class="hero-bg"></div>
+        <div class="hero-content">
+          <h1>Statistiques &<br><em>Analytiques</em></h1>
+          <p class="hero-sub">Analyse détaillée des indicateurs de performance du programme de stages.</p>
+        </div>
+      </section>
+
+      <!-- KPIs Détaillés -->
+      <section class="kpi-section stats-kpi">
+        <div class="kpi-card">
+          <div class="kpi-icon total">👥</div>
+          <div class="kpi-info">
+            <div class="kpi-value" id="statKpiTotal">—</div>
+            <div class="kpi-label">Total Stagiaires</div>
+          </div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon active">🟢</div>
+          <div class="kpi-info">
+            <div class="kpi-value" id="statKpiActive">—</div>
+            <div class="kpi-label">Stages Actifs</div>
+          </div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon upcoming">⏳</div>
+          <div class="kpi-info">
+            <div class="kpi-value" id="statKpiUpcoming">—</div>
+            <div class="kpi-label">À Venir</div>
+          </div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon ended">✅</div>
+          <div class="kpi-info">
+            <div class="kpi-value" id="statKpiEnded">—</div>
+            <div class="kpi-label">Terminés</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Charts Large -->
+      <section class="charts-section">
+        <div class="chart-card wide">
+          <h3>Répartition par Établissement</h3>
+          <div class="chart-wrapper bar-horizontal">
+            <canvas id="chartEtab"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <section class="charts-section">
+        <div class="chart-card">
+          <h3>Durée Moyenne des Stages (jours)</h3>
+          <div class="chart-wrapper doughnut">
+            <canvas id="chartDuree"></canvas>
+          </div>
+        </div>
+        <div class="chart-card">
+          <h3>Stages par Statut</h3>
+          <div class="chart-wrapper pie">
+            <canvas id="chartStatusPie"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <section class="charts-section">
+        <div class="chart-card wide">
+          <h3>Timeline des Débuts de Stage</h3>
+          <div class="chart-wrapper line">
+            <canvas id="chartDebut"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <!-- Données brutes -->
+      <section class="table-section">
+        <div class="table-header">
+          <h2>Résumé par Candidat</h2>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Nom</th>
+                <th>Filière</th>
+                <th>Établissement</th>
+                <th>Début</th>
+                <th>Fin</th>
+                <th>Durée (jours)</th>
+                <th>Statut</th>
+              </tr>
+            </thead>
+            <tbody id="statsTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <!-- MODAL -->
+  <div class="modal-overlay hidden" id="modalOverlay" onclick="closeModal(event)">
+    <div class="modal-card" id="modalCard">
+      <button class="modal-close" onclick="closeModalBtn()">✕</button>
+      <div id="modalContent"></div>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <footer id="mainFooter">
+    <div class="footer-inner">
+      <p>© 2026 StageFlow — Plateforme de Suivi des Stages · <span id="footerCount"></span></p>
+    </div>
+  </footer>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
