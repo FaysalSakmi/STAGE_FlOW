@@ -1,1 +1,16 @@
+# Clefs Airtable / secrets
 config.js
+.env
+
+# Node modules
+node_modules/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+logs
+
+# System
+.DS_Store
+Thumbs.db

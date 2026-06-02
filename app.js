@@ -191,33 +191,54 @@ function getDuration(debut, fin) {
 
 // ================================================== AIRTABLE ==================================================
 
+// URL du backend (change en production)
+const API_BASE_URL = window.location.origin; // genre http://localhost:3000
+
 async function loadFromAirtable() {
-  // Try direct API first, fallback to proxy if CORS error
-  let response;
+  // STEP 1: Essayer via le backend sécurisé
   try {
-    const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(AIRTABLE_TABLE)}`;
-    response = await fetch(url, {
-      headers: {
-        'Authorization': `Bearer ${AIRTABLE_API_KEY}`
+    const response = await fetch(`${API_BASE_URL}/api/airtable`);
+
+    if (!response.ok) {
+      throw new Error(`Backend error: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+
+    if (!data.records) {
+      throw new Error('Format de réponse invalide');
+    }
+
+    return mapAirtableRecords(data.records);
+
+  } catch (backendError) {
+    console.warn('⚠️ Backend indisponible, fallback sur connexion directe...', backendError.message);
+
+    // STEP 2: Fallback direct (⚠️ expose ta clé, réservé au dev local!)
+    try {
+      const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(AIRTABLE_TABLE)}`;
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${AIRTABLE_API_KEY}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Airtable error: ${response.status} ${response.statusText}`);
       }
-    });
-  } catch (e) {
-    // If direct fails, try via corsproxy.io
-    const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(`https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(AIRTABLE_TABLE)}`)}`;
-    response = await fetch(proxyUrl, {
-      headers: {
-        'Authorization': `Bearer ${AIRTABLE_API_KEY}`
-      }
-    });
+
+      const data = await response.json();
+      return mapAirtableRecords(data.records || []);
+
+    } catch (directError) {
+      console.error('❌ Erreur connexion directe Airtable:', directError);
+      throw directError;
+    }
   }
+}
 
-  if (!response.ok) {
-    throw new Error(`Airtable error: ${response.status} ${response.statusText}`);
-  }
-
-  const data = await response.json();
-  const records = data.records || [];
-
+// Map Airtable records -> format app StageFlow
+function mapAirtableRecords(records) {
   return records.map((record, index) => {
     const f = record.fields || {};
     return {
