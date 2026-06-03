@@ -6,9 +6,24 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY || '';
-const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID || '';
-const AIRTABLE_TABLE = process.env.AIRTABLE_TABLE_NAME || process.env.AIRTABLE_TABLE || '';
+let AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY || '';
+let AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID || '';
+let AIRTABLE_TABLE = process.env.AIRTABLE_TABLE_NAME || process.env.AIRTABLE_TABLE || '';
+
+if (!AIRTABLE_API_KEY || !AIRTABLE_BASE_ID || !AIRTABLE_TABLE) {
+  try {
+    const envFile = require('./env.json');
+    if (envFile.AIRTABLE_API_KEY && envFile.AIRTABLE_BASE_ID && envFile.AIRTABLE_TABLE_NAME) {
+      AIRTABLE_API_KEY = AIRTABLE_API_KEY || envFile.AIRTABLE_API_KEY;
+      AIRTABLE_BASE_ID = AIRTABLE_BASE_ID || envFile.AIRTABLE_BASE_ID;
+      AIRTABLE_TABLE = AIRTABLE_TABLE || envFile.AIRTABLE_TABLE_NAME;
+      console.log('📄 Configuration chargée depuis env.json');
+    }
+  } catch (e) {
+    console.warn('⚠️ env.json non trouvé ou invalide');
+  }
+}
+
 const AIRTABLE_CONFIGURED = !!(AIRTABLE_API_KEY && AIRTABLE_BASE_ID && AIRTABLE_TABLE);
 
 const maskKey = (key) => {
