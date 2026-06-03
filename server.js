@@ -42,6 +42,20 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+function mapAirtableFields(fields, index) {
+  const f = fields || {};
+  return {
+    id: f.id || f.ID || f.Id || index + 1,
+    nom: f.Condidat || f.condidat || f.CONDIDAT || f.nom || f.Nom || f.NOM || f.name || f.Name || '',
+    filiere: f.Filiere || f.filiere || f.FILIERE || f.filière || f.Filière || '',
+    etablissement: f.Etablissement || f.etablissement || f.ETABLISSEMENT || f.établissement || f.Établissement || '',
+    telephone: f['Numero Telephone'] || f['numero telephone'] || f['NUMERO TELEPHONE'] || f.telephone || f.Telephone || f.TELEPHONE || '',
+    email: f.Email || f.email || f.EMAIL || '',
+    debut: f['Date de Debut'] || f['Date de Début'] || f['date de debut'] || f.debut || f.Debut || f.DEBUT || '',
+    fin: f['Date de Fin'] || f['date de fin'] || f.fin || f.Fin || f.FIN || ''
+  };
+}
+
 app.get('/api/airtable', async (req, res) => {
   if (!AIRTABLE_CONFIGURED) {
     return res.status(503).json({
@@ -76,9 +90,27 @@ app.get('/api/airtable', async (req, res) => {
       reqHttps.end();
     });
 
-    res.status(airtableResponse.status).json(airtableResponse.body);
+    if (airtableResponse.status !== 200) {
+      console.error(`❌ Airtable API error: ${airtableResponse.status}`, JSON.stringify(airtableResponse.body));
+      return res.status(airtableResponse.status).json(airtableResponse.body);
+    }
+
+    const records = airtableResponse.body.records || [];
+
+    if (records.length > 0) {
+      const sampleFields = Object.keys(records[0].fields || {});
+      console.log(`📋 Champs Airtable détectés: [${sampleFields.join(', ')}]`);
+    }
+
+    const mapped = records
+      .map((record, i) => mapAirtableFields(record.fields, i))
+      .filter(r => r.nom && r.debut && r.fin);
+
+    console.log(`✅ ${mapped.length}/${records.length} enregistrements récupérés depuis Airtable`);
+
+    res.json(mapped);
   } catch (error) {
-    console.error('Erreur proxy Airtable:', error.message);
+    console.error('❌ Erreur proxy Airtable:', error.message);
     res.status(500).json({
       error: 'Erreur lors de la récupération des données Airtable',
       details: error.message,
@@ -123,9 +155,14 @@ app.get('/api/airtable/:recordId', async (req, res) => {
       reqHttps.end();
     });
 
-    res.status(airtableResponse.status).json(airtableResponse.body);
+    if (airtableResponse.status !== 200) {
+      return res.status(airtableResponse.status).json(airtableResponse.body);
+    }
+
+    const mapped = mapAirtableFields(airtableResponse.body.fields, 0);
+    res.json(mapped);
   } catch (error) {
-    console.error('Erreur proxy Airtable:', error.message);
+    console.error('❌ Erreur proxy Airtable:', error.message);
     res.status(500).json({ error: 'Erreur lors de la récupération du record' });
   }
 });

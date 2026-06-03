@@ -128,13 +128,6 @@ const DATABASE = [
   }
 ];
 
-// ================================================== CONFIG AIRTABLE ==================================================
-
-const CFG = window.APP_CONFIG || {};
-const AIRTABLE_API_KEY = CFG.AIRTABLE_API_KEY || '';
-const AIRTABLE_BASE_ID = CFG.AIRTABLE_BASE_ID || '';
-const AIRTABLE_TABLE = CFG.AIRTABLE_TABLE || 'Table 1';
-
 // ================================================== STATE ==================================================
 let currentData = [];
 let filtered = [];
@@ -189,96 +182,45 @@ function getDuration(debut, fin) {
   return Math.round((f - d) / (1000 * 60 * 60 * 24));
 }
 
-// ================================================== AIRTABLE ==================================================
+// ================================================== AIRTABLE (via backend proxy) ==================================================
 
-// URL du backend (change en production)
-const API_BASE_URL = window.location.origin; // genre http://localhost:3000
+async function loadFromBackend() {
+  console.log('📡 Chargement des données depuis le backend...');
+  const response = await fetch('/api/airtable');
 
-async function loadFromAirtable() {
-  // STEP 1: Essayer via le backend sécurisé
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/airtable`);
-
-    if (!response.ok) {
-      throw new Error(`Backend error: ${response.status} ${response.statusText}`);
-    }
-
-    const data = await response.json();
-
-    if (!data.records) {
-      throw new Error('Format de réponse invalide');
-    }
-
-    return mapAirtableRecords(data.records);
-
-  } catch (backendError) {
-    console.warn('⚠️ Backend indisponible, fallback sur connexion directe...', backendError.message);
-
-    // STEP 2: Fallback direct (⚠️ expose ta clé, réservé au dev local!)
-    try {
-      const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(AIRTABLE_TABLE)}`;
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${AIRTABLE_API_KEY}`
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error(`Airtable error: ${response.status} ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      return mapAirtableRecords(data.records || []);
-
-    } catch (directError) {
-      console.error('❌ Erreur connexion directe Airtable:', directError);
-      throw directError;
-    }
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Backend error ${response.status}: ${text}`);
   }
-}
 
-// Map Airtable records -> format app StageFlow
-function mapAirtableRecords(records) {
-  return records.map((record, index) => {
-    const f = record.fields || {};
-    return {
-      id: f.id || f.ID || index + 1,
-      nom: f.nom || f.Nom || f.name || f.Name || '',
-      filiere: f.filiere || f.Filiere || f.filière || f.Filière || '',
-      etablissement: f.etablissement || f.Etablissement || f.établissement || f.Établissement || '',
-      telephone: f.telephone || f.Telephone || f.téléphone || f.Téléphone || '',
-      email: f.email || f.Email || '',
-      debut: f.debut || f.Debut || f.début || f.Début || '',
-      fin: f.fin || f.Fin || ''
-    };
-  }).filter(r => r.nom && r.debut && r.fin);
+  const data = await response.json();
+  console.log(`✅ ${data.length} enregistrements reçus du backend`);
+  console.log('📦 Échantillon:', data[0]);
+  return data;
 }
 
 async function refreshData() {
   const btn = document.getElementById('btnRefresh');
   const originalText = btn ? btn.innerHTML : 'Actualiser';
-  
+
   try {
-    // Show loading state
     if (btn) {
       btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1 2.19-6.94"/></svg> Sync...';
       btn.classList.add('loading');
       btn.disabled = true;
     }
 
-    const newData = await loadFromAirtable();
-    
+    const newData = await loadFromBackend();
+
     if (newData && newData.length > 0) {
       currentData = newData;
       isAirtableMode = true;
       filtered = [...currentData];
-      
-      // Force re-render the current page
+
       if (currentPage === 'dashboard') renderDashboard();
       if (currentPage === 'candidats') { renderCandidats(); }
       if (currentPage === 'statistiques') renderStatistiques();
-      
-      // Sync indicator
+
       if (btn) {
         btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Sync OK!';
         setTimeout(() => {
@@ -288,10 +230,10 @@ async function refreshData() {
         }, 1500);
       }
     } else {
-      throw new Error('Aucune donnée reçue d\'Airtable');
+      throw new Error('Aucune donnée reçue du backend');
     }
   } catch (err) {
-    console.error('Failed to load Airtable data:', err);
+    console.error('❌ Erreur synchronisation:', err.message || err);
     if (btn) {
       btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg> Erreur';
       setTimeout(() => {
@@ -299,9 +241,6 @@ async function refreshData() {
         btn.classList.remove('loading');
         btn.disabled = false;
       }, 3000);
-    } else {
-      // If no button, log to console only
-      console.error('Airtable sync error:', err.message || err);
     }
   }
 }
@@ -850,8 +789,19 @@ document.getElementById('filterStatus')?.addEventListener('change', applyFilters
 
 // ================================================== INIT ==================================================
 
-function init() {
-  currentData = [...DATABASE];
+async function init() {
+  try {
+    const data = await loadFromBackend();
+    if (data && data.length > 0) {
+      currentData = data;
+      isAirtableMode = true;
+    } else {
+      throw new Error('Données vides');
+    }
+  } catch (err) {
+    console.warn('⚠️ Chargement Airtable échoué, utilisation des données locales:', err.message);
+    currentData = [...DATABASE];
+  }
   filtered = [...currentData];
   populateFilters();
   navigateTo('dashboard');
