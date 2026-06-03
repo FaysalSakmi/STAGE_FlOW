@@ -8,11 +8,9 @@ const PORT = process.env.PORT || 3000;
 
 const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY || '';
 const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID || '';
-const AIRTABLE_TABLE = process.env.AIRTABLE_TABLE_NAME || '';
-
+const AIRTABLE_TABLE = process.env.AIRTABLE_TABLE_NAME || process.env.AIRTABLE_TABLE || '';
 const AIRTABLE_CONFIGURED = !!(AIRTABLE_API_KEY && AIRTABLE_BASE_ID && AIRTABLE_TABLE);
 
-// Log de diagnostic des variables d'environnement (clé masquée)
 const maskKey = (key) => {
   if (!key || key.length < 8) return '(vide)';
   return key.slice(0, 4) + '****' + key.slice(-4);
@@ -24,6 +22,7 @@ console.log(`  AIRTABLE_API_KEY    : ${AIRTABLE_CONFIGURED ? maskKey(AIRTABLE_AP
 console.log(`  AIRTABLE_BASE_ID    : ${AIRTABLE_BASE_ID || '⚠️ NON DÉFINI'}`);
 console.log(`  AIRTABLE_TABLE_NAME : ${AIRTABLE_TABLE || '⚠️ NON DÉFINI'}`);
 console.log(`  NODE_ENV            : ${process.env.NODE_ENV || '(non défini)'}`);
+console.log(`  Source              : env vars + .env`);
 console.log('═══════════════════════════════════════');
 
 if (!AIRTABLE_CONFIGURED) {
@@ -223,7 +222,6 @@ app.get('/api/airtable/:recordId', async (req, res) => {
   }
 });
 
-const path = require('path');
 app.use(express.static(path.join(__dirname)));
 
 app.get('*', (req, res) => {
