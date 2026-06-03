@@ -1,6 +1,8 @@
-# Clefs Airtable / secrets
-config.js
+# Environment variables (secrets)
 .env
+
+# Frontend Airtable config (API key)
+config.js
 
 # Node modules
 node_modules/
@@ -14,3 +16,7 @@ logs
 # System
 .DS_Store
 Thumbs.db
+
+# IDE
+.vscode/
+.idea/

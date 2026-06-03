@@ -1,8 +1,3 @@
-// ============================================
-//   STAGEFLOW — BACKEND SECURISÉ
-//   Serveur Node.js/Express qui masque les clés Airtable
-// ============================================
-
 const express = require('express');
 const cors = require('cors');
 const https = require('https');
@@ -11,29 +6,22 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ============================================
-// CONFIGURATION
-// ============================================
-const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY;
-const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
-const AIRTABLE_TABLE = process.env.AIRTABLE_TABLE_NAME;
+const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY || '';
+const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID || '';
+const AIRTABLE_TABLE = process.env.AIRTABLE_TABLE_NAME || '';
 
-// Vérification des variables d'environment
-if (!AIRTABLE_API_KEY || !AIRTABLE_BASE_ID || !AIRTABLE_TABLE) {
-  console.error('❌ Erreur: Variables Airtable manquantes dans le fichier .env');
-  console.error('   Assure-toi que AIRTABLE_API_KEY, AIRTABLE_BASE_ID et AIRTABLE_TABLE_NAME sont définies.');
-  process.exit(1);
+const AIRTABLE_CONFIGURED = !!(AIRTABLE_API_KEY && AIRTABLE_BASE_ID && AIRTABLE_TABLE);
+
+if (!AIRTABLE_CONFIGURED) {
+  console.warn('⚠️ Variables Airtable manquantes (AIRTABLE_API_KEY, AIRTABLE_BASE_ID, AIRTABLE_TABLE_NAME).');
+  console.warn('   Les endpoints /api/airtable retourneront une erreur 503.');
+  console.warn('   Configurez ces variables dans les environment settings de Faable.');
 }
 
-// ============================================
-// MIDDLEWARE
-// ============================================
-
-// CORS: Autorise uniquement ton propre site (prod) ou tout (dev)
 const corsOptions = {
-  // En production, remplace par ton domaine: origin: 'https://monsite.com'
-  // Pour le dev local:
-  origin: '*', // ⚠️ Change ça en production!
+  origin: process.env.NODE_ENV === 'production'
+    ? (process.env.CORS_ORIGIN || false)
+    : '*',
   methods: ['GET', 'POST'],
   allowedHeaders: ['Content-Type'],
 };
@@ -41,23 +29,27 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 
-// Logger les requêtes
 app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
   next();
 });
 
-// ============================================
-// ROUTES
-// ============================================
-
-// --- Health Check ---
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date().toISOString() });
+  res.json({
+    status: 'OK',
+    timestamp: new Date().toISOString(),
+    airtable: AIRTABLE_CONFIGURED ? 'configured' : 'not_configured',
+  });
 });
 
-// --- Récupérer les données Airtable (route sécurisée!) ---
 app.get('/api/airtable', async (req, res) => {
+  if (!AIRTABLE_CONFIGURED) {
+    return res.status(503).json({
+      error: 'Service Airtable non configuré',
+      message: 'Les variables AIRTABLE_API_KEY, AIRTABLE_BASE_ID et AIRTABLE_TABLE_NAME doivent être définies.',
+    });
+  }
+
   try {
     const options = {
       hostname: 'api.airtable.com',
@@ -69,12 +61,12 @@ app.get('/api/airtable', async (req, res) => {
     };
 
     const airtableResponse = await new Promise((resolve, reject) => {
-      const reqHttps = https.request(options, (res) => {
+      const reqHttps = https.request(options, (airtableRes) => {
         let data = '';
-        res.on('data', (chunk) => { data += chunk; });
-        res.on('end', () => {
+        airtableRes.on('data', (chunk) => { data += chunk; });
+        airtableRes.on('end', () => {
           try {
-            resolve({ status: res.statusCode, body: JSON.parse(data) });
+            resolve({ status: airtableRes.statusCode, body: JSON.parse(data) });
           } catch (e) {
             reject(new Error('Réponse Airtable invalide'));
           }
@@ -84,9 +76,7 @@ app.get('/api/airtable', async (req, res) => {
       reqHttps.end();
     });
 
-    // Forward la réponse d'Airtable au client
     res.status(airtableResponse.status).json(airtableResponse.body);
-
   } catch (error) {
     console.error('Erreur proxy Airtable:', error.message);
     res.status(500).json({
@@ -96,9 +86,14 @@ app.get('/api/airtable', async (req, res) => {
   }
 });
 
-// --- Nouveau: POST pour Airtable ---
 app.get('/api/airtable/:recordId', async (req, res) => {
-  // Protéger l'ID pour éviter injection
+  if (!AIRTABLE_CONFIGURED) {
+    return res.status(503).json({
+      error: 'Service Airtable non configuré',
+      message: 'Les variables AIRTABLE_API_KEY, AIRTABLE_BASE_ID et AIRTABLE_TABLE_NAME doivent être définies.',
+    });
+  }
+
   const recordId = req.params.recordId.replace(/[^a-zA-Z0-9]/g, '');
   if (!recordId) return res.status(400).json({ error: 'ID invalide' });
 
@@ -113,12 +108,12 @@ app.get('/api/airtable/:recordId', async (req, res) => {
     };
 
     const airtableResponse = await new Promise((resolve, reject) => {
-      const reqHttps = https.request(options, (res) => {
+      const reqHttps = https.request(options, (airtableRes) => {
         let data = '';
-        res.on('data', (chunk) => { data += chunk; });
-        res.on('end', () => {
+        airtableRes.on('data', (chunk) => { data += chunk; });
+        airtableRes.on('end', () => {
           try {
-            resolve({ status: res.statusCode, body: JSON.parse(data) });
+            resolve({ status: airtableRes.statusCode, body: JSON.parse(data) });
           } catch (e) {
             reject(new Error('Réponse Airtable invalide'));
           }
@@ -129,15 +124,12 @@ app.get('/api/airtable/:recordId', async (req, res) => {
     });
 
     res.status(airtableResponse.status).json(airtableResponse.body);
-
   } catch (error) {
     console.error('Erreur proxy Airtable:', error.message);
     res.status(500).json({ error: 'Erreur lors de la récupération du record' });
   }
 });
 
-// --- Servir le frontend en production ---
-// Si tu héberges le site et le backend sur le même serveur
 const path = require('path');
 app.use(express.static(path.join(__dirname)));
 
@@ -145,17 +137,16 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// ============================================
-// START SERVER
-// ============================================
 app.listen(PORT, () => {
   console.log('============================================');
   console.log('  🚀 STAGEFLOW BACKEND');
   console.log(`  🌐 http://localhost:${PORT}`);
   console.log('============================================');
   console.log('\n📌 Endpoints disponibles:');
-  console.log(`   • GET http://localhost:${PORT}/api/health`);
-  console.log(`   • GET http://localhost:${PORT}/api/airtable`);
-  console.log(`   • GET http://localhost:${PORT}/api/airtable/:recordId`);
-  console.log('\n⚠️  En production, changez la config CORS!');
+  console.log(`  • GET http://localhost:${PORT}/api/health`);
+  console.log(`  • GET http://localhost:${PORT}/api/airtable`);
+  console.log(`  • GET http://localhost:${PORT}/api/airtable/:recordId`);
+  if (!AIRTABLE_CONFIGURED) {
+    console.log('\n⚠️  Airtable non configuré — définissez les variables env sur Faable.');
+  }
 });

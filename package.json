@@ -3,7 +3,11 @@
   "version": "1.0.0",
   "description": "Backend sécurisé pour StageFlow - masque les clés API Airtable",
   "main": "server.js",
+  "engines": {
+    "node": ">=16.0.0"
+  },
   "scripts": {
+    "build": "echo 'Build completed'",
     "start": "node server.js",
     "dev": "nodemon server.js"
   },
