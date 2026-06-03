@@ -185,18 +185,41 @@ function getDuration(debut, fin) {
 // ================================================== AIRTABLE (via backend proxy) ==================================================
 
 async function loadFromBackend() {
+  const url = '/api/airtable';
   console.log('📡 Chargement des données depuis le backend...');
-  const response = await fetch('/api/airtable');
+  console.log(`   🔗 URL: ${window.location.origin}${url}`);
+
+  const response = await fetch(url);
+  console.log(`   📥 HTTP ${response.status} ${response.statusText}`);
 
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Backend error ${response.status}: ${text}`);
+    let errorDetails;
+    try {
+      errorDetails = await response.json();
+      console.error(`   ❌ Réponse backend:`, errorDetails);
+    } catch {
+      errorDetails = await response.text();
+      console.error(`   ❌ Réponse backend (texte):`, errorDetails);
+    }
+    throw { status: response.status, details: errorDetails };
   }
 
   const data = await response.json();
-  console.log(`✅ ${data.length} enregistrements reçus du backend`);
-  console.log('📦 Échantillon:', data[0]);
+  console.log(`   ✅ ${data.length} enregistrements reçus du backend`);
+  if (data.length > 0) {
+    console.log('   📦 Échantillon:', data[0]);
+  }
   return data;
+}
+
+function setBtnError(btn, originalText, message) {
+  if (!btn) return;
+  btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg> ${message}`;
+  btn.classList.remove('loading');
+  btn.disabled = false;
+  setTimeout(() => {
+    btn.innerHTML = originalText;
+  }, 6000);
 }
 
 async function refreshData() {
@@ -230,17 +253,16 @@ async function refreshData() {
         }, 1500);
       }
     } else {
-      throw new Error('Aucune donnée reçue du backend');
+      throw { status: 0, details: 'Aucune donnée reçue du backend' };
     }
   } catch (err) {
-    console.error('❌ Erreur synchronisation:', err.message || err);
+    const status = err.status || 0;
+    const details = err.details || err.message || err;
+    const detailStr = typeof details === 'object' ? JSON.stringify(details) : String(details);
+    console.error(`❌ Erreur synchronisation (HTTP ${status}):`, detailStr);
     if (btn) {
-      btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg> Erreur';
-      setTimeout(() => {
-        btn.innerHTML = originalText;
-        btn.classList.remove('loading');
-        btn.disabled = false;
-      }, 3000);
+      const shortMsg = status === 503 ? 'Airtable non configuré' : status === 0 ? 'Backend injoignable' : `Erreur ${status}`;
+      setBtnError(btn, originalText, shortMsg);
     }
   }
 }

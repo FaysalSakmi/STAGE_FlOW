@@ -12,6 +12,20 @@ const AIRTABLE_TABLE = process.env.AIRTABLE_TABLE_NAME || '';
 
 const AIRTABLE_CONFIGURED = !!(AIRTABLE_API_KEY && AIRTABLE_BASE_ID && AIRTABLE_TABLE);
 
+// Log de diagnostic des variables d'environnement (clé masquée)
+const maskKey = (key) => {
+  if (!key || key.length < 8) return '(vide)';
+  return key.slice(0, 4) + '****' + key.slice(-4);
+};
+
+console.log('═══════════════════════════════════════');
+console.log('  📋 DIAGNOSTIC AIRTABLE');
+console.log(`  AIRTABLE_API_KEY    : ${AIRTABLE_CONFIGURED ? maskKey(AIRTABLE_API_KEY) : '⚠️ NON DÉFINIE'}`);
+console.log(`  AIRTABLE_BASE_ID    : ${AIRTABLE_BASE_ID || '⚠️ NON DÉFINI'}`);
+console.log(`  AIRTABLE_TABLE_NAME : ${AIRTABLE_TABLE || '⚠️ NON DÉFINI'}`);
+console.log(`  NODE_ENV            : ${process.env.NODE_ENV || '(non défini)'}`);
+console.log('═══════════════════════════════════════');
+
 if (!AIRTABLE_CONFIGURED) {
   console.warn('⚠️ Variables Airtable manquantes (AIRTABLE_API_KEY, AIRTABLE_BASE_ID, AIRTABLE_TABLE_NAME).');
   console.warn('   Les endpoints /api/airtable retourneront une erreur 503.');
@@ -39,6 +53,12 @@ app.get('/api/health', (req, res) => {
     status: 'OK',
     timestamp: new Date().toISOString(),
     airtable: AIRTABLE_CONFIGURED ? 'configured' : 'not_configured',
+    env: {
+      hasApiKey: !!AIRTABLE_API_KEY,
+      baseId: AIRTABLE_BASE_ID || null,
+      tableName: AIRTABLE_TABLE || null,
+      nodeEnv: process.env.NODE_ENV || null,
+    },
   });
 });
 
@@ -58,11 +78,20 @@ function mapAirtableFields(fields, index) {
 
 app.get('/api/airtable', async (req, res) => {
   if (!AIRTABLE_CONFIGURED) {
+    console.error('❌ GET /api/airtable — Airtable non configuré (variables env manquantes)');
     return res.status(503).json({
       error: 'Service Airtable non configuré',
       message: 'Les variables AIRTABLE_API_KEY, AIRTABLE_BASE_ID et AIRTABLE_TABLE_NAME doivent être définies.',
+      diagnostic: {
+        hasApiKey: !!AIRTABLE_API_KEY,
+        baseIdSet: !!AIRTABLE_BASE_ID,
+        tableNameSet: !!AIRTABLE_TABLE,
+      },
     });
   }
+
+  console.log(`📡 GET /api/airtable — Appel Airtable API...`);
+  console.log(`   URL: https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(AIRTABLE_TABLE)}`);
 
   try {
     const options = {
@@ -74,46 +103,73 @@ app.get('/api/airtable', async (req, res) => {
       },
     };
 
-    const airtableResponse = await new Promise((resolve, reject) => {
+    const { status, body } = await new Promise((resolve, reject) => {
       const reqHttps = https.request(options, (airtableRes) => {
-        let data = '';
-        airtableRes.on('data', (chunk) => { data += chunk; });
+        let raw = '';
+        airtableRes.on('data', (chunk) => { raw += chunk; });
         airtableRes.on('end', () => {
+          console.log(`   Réponse Airtable — Status: ${airtableRes.statusCode}`);
           try {
-            resolve({ status: airtableRes.statusCode, body: JSON.parse(data) });
+            resolve({ status: airtableRes.statusCode, body: JSON.parse(raw), raw });
           } catch (e) {
-            reject(new Error('Réponse Airtable invalide'));
+            console.error(`   ❌ Réponse Airtable invalide (JSON parse error): ${raw.slice(0, 500)}`);
+            reject(new Error(`Réponse Airtable invalide: ${raw.slice(0, 200)}`));
           }
         });
       });
-      reqHttps.on('error', reject);
+      reqHttps.on('error', (err) => {
+        console.error(`   ❌ Erreur réseau Airtable: ${err.message}`);
+        reject(err);
+      });
       reqHttps.end();
     });
 
-    if (airtableResponse.status !== 200) {
-      console.error(`❌ Airtable API error: ${airtableResponse.status}`, JSON.stringify(airtableResponse.body));
-      return res.status(airtableResponse.status).json(airtableResponse.body);
+    if (status !== 200) {
+      console.error(`❌ GET /api/airtable — Airtable a retourné ${status}`);
+      console.error(`   Réponse brute: ${JSON.stringify(body).slice(0, 1000)}`);
+      return res.status(status).json({
+        error: `Airtable API error (${status})`,
+        details: body?.error || body,
+        diagnostic: {
+          httpStatus: status,
+          baseId: AIRTABLE_BASE_ID,
+          tableName: AIRTABLE_TABLE,
+        },
+      });
     }
 
-    const records = airtableResponse.body.records || [];
+    const records = body.records || [];
+    console.log(`   ✅ Airtable a retourné ${records.length} enregistrements bruts`);
 
     if (records.length > 0) {
       const sampleFields = Object.keys(records[0].fields || {});
-      console.log(`📋 Champs Airtable détectés: [${sampleFields.join(', ')}]`);
+      console.log(`   📋 Champs détectés: [${sampleFields.join(', ')}]`);
+      console.log(`   🏷️  Premier enregistrement (raw):`, JSON.stringify(records[0].fields));
+
+      const mapped = records
+        .map((record, i) => mapAirtableFields(record.fields, i))
+        .filter(r => r.nom && r.debut && r.fin);
+
+      const rejetes = records.length - mapped.length;
+      if (rejetes > 0) {
+        console.warn(`   ⚠️  ${rejetes} enregistrements filtrés (nom, debut ou fin manquants)`);
+      }
+
+      console.log(`   ✅ ${mapped.length}/${records.length} enregistrements mappés avec succès`);
+      return res.json(mapped);
     }
 
-    const mapped = records
-      .map((record, i) => mapAirtableFields(record.fields, i))
-      .filter(r => r.nom && r.debut && r.fin);
-
-    console.log(`✅ ${mapped.length}/${records.length} enregistrements récupérés depuis Airtable`);
-
-    res.json(mapped);
+    console.log('   ℹ️  Airtable a retourné 0 enregistrements');
+    res.json([]);
   } catch (error) {
-    console.error('❌ Erreur proxy Airtable:', error.message);
+    console.error('❌ GET /api/airtable — Erreur proxy Airtable:', error.message);
     res.status(500).json({
       error: 'Erreur lors de la récupération des données Airtable',
       details: error.message,
+      diagnostic: {
+        baseId: AIRTABLE_BASE_ID,
+        tableName: AIRTABLE_TABLE,
+      },
     });
   }
 });
@@ -139,15 +195,15 @@ app.get('/api/airtable/:recordId', async (req, res) => {
       },
     };
 
-    const airtableResponse = await new Promise((resolve, reject) => {
+    const { status, body } = await new Promise((resolve, reject) => {
       const reqHttps = https.request(options, (airtableRes) => {
-        let data = '';
-        airtableRes.on('data', (chunk) => { data += chunk; });
+        let raw = '';
+        airtableRes.on('data', (chunk) => { raw += chunk; });
         airtableRes.on('end', () => {
           try {
-            resolve({ status: airtableRes.statusCode, body: JSON.parse(data) });
+            resolve({ status: airtableRes.statusCode, body: JSON.parse(raw), raw });
           } catch (e) {
-            reject(new Error('Réponse Airtable invalide'));
+            reject(new Error(`Réponse Airtable invalide: ${raw.slice(0, 200)}`));
           }
         });
       });
@@ -155,11 +211,11 @@ app.get('/api/airtable/:recordId', async (req, res) => {
       reqHttps.end();
     });
 
-    if (airtableResponse.status !== 200) {
-      return res.status(airtableResponse.status).json(airtableResponse.body);
+    if (status !== 200) {
+      return res.status(status).json(body);
     }
 
-    const mapped = mapAirtableFields(airtableResponse.body.fields, 0);
+    const mapped = mapAirtableFields(body.fields, 0);
     res.json(mapped);
   } catch (error) {
     console.error('❌ Erreur proxy Airtable:', error.message);
